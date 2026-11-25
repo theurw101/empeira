@@ -322,13 +322,19 @@ module Empeira
       def check_images(definitions: @plan.definitions)
         @desired_images = {}
         @runtime.with_local_images do
-          definitions.each_value do |definition|
+          definitions.each do |key, definition|
             image = definition.options.fetch('image')
+            @progress.heartbeat(image_label(key, image, built: definition.options['recipe']))
             @runtime.ensure_image(image, recipe: definition.options['recipe'],
                                          files: definition.options.fetch('build_files', {}))
             @desired_images[image] = @runtime.image_id(image)
           end
         end
+      end
+
+      def image_label(key, image, built:)
+        source = built ? 'local build' : image.split('/').last.sub(/(@sha256:\h{12})\h+\z/, '\1')
+        "Preparing images: #{key} (#{source})..."
       end
 
       def prepare_postgres

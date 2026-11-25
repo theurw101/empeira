@@ -672,6 +672,24 @@ RSpec.describe Empeira::ControlPlane::Controller do
       .to eq(previous.except('server'))
   end
 
+  it 'names each control-plane image before preparing it' do
+    progress = Empeira::Progress.new
+    plane = described_class.new(context: context, runtime: runtime, store: @store, progress: progress)
+    events = []
+    allow(progress).to receive(:heartbeat) { |message| events << message }
+    allow(runtime).to receive(:ensure_image).and_wrap_original do |original, image, **options|
+      events << :ensure_image
+      original.call(image, **options)
+    end
+    mutate(plane, :preflight)
+
+    labels, calls = events.each_slice(2).to_a.transpose
+    expect(calls).to all(eq(:ensure_image))
+    expect(labels).to include(match(%r{\APreparing images: server \(openvoxserver(:[^@/]+|@sha256:\h{12})\)\.\.\.\z}),
+                              match(%r{\APreparing images: dns \(coredns[:@][^/]+\)\.\.\.\z}),
+                              match(/\APreparing images: \w+ \(local build\)\.\.\.\z/))
+  end
+
   it 'rejects failed image acquisition before changing services or storage' do
     allow(runtime).to receive(:ensure_image).and_raise(Empeira::Error, 'image acquisition failed')
     expect { mutate(controller, :up) }.to raise_error(Empeira::Error, /image acquisition failed/)
